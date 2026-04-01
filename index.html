@@ -341,6 +341,30 @@
             }
         }
 
+        // 删除评论（云端）
+        async function deleteComment(moodId, commentId) {
+            if (!confirm('确定要删除这条评论吗？')) return;
+            if (!isConfigured) { deleteCommentLocal(moodId, commentId); return; }
+            try {
+                const { error } = await sb.from('comments').delete().eq('id', commentId);
+                if (error) throw error;
+                // 从本地数据移除
+                const mood = moodData.find(m => m.id === moodId);
+                if (mood) {
+                    mood.comments = mood.comments.filter(c => c.id !== commentId);
+                }
+                // 从模态框移除
+                const el = document.getElementById('comment-' + commentId);
+                if (el) el.remove();
+                // 更新评论数
+                const label = document.getElementById('comment-count-label');
+                if (label && mood) label.textContent = `评论 (${mood.comments.length})`;
+                renderMoodList();
+            } catch (e) {
+                alert('删除失败：' + e.message);
+            }
+        }
+
         // =================== 本地降级 ===================
         function loadLocal() {
             const saved = localStorage.getItem('moodData');
@@ -367,6 +391,22 @@
             localStorage.setItem('moodData', JSON.stringify(moodData));
             document.getElementById('comment-input').value = '';
             appendCommentToModal(c, mood);
+            renderMoodList();
+        }
+
+        // 删除评论（本地）
+        function deleteCommentLocal(moodId, commentId) {
+            if (!confirm('确定要删除这条评论吗？')) return;
+            const mood = moodData.find(m => m.id === moodId);
+            if (mood) {
+                mood.comments = mood.comments.filter(c => c.id !== commentId);
+            }
+            localStorage.setItem('moodData', JSON.stringify(moodData));
+            // 从模态框移除
+            const el = document.getElementById('comment-' + commentId);
+            if (el) el.remove();
+            const label = document.getElementById('comment-count-label');
+            if (label && mood) label.textContent = `评论 (${mood.comments.length})`;
             renderMoodList();
         }
 
@@ -476,14 +516,22 @@
                     <div id="comments-list" class="space-y-2">
                         ${mood.comments.length === 0
                             ? '<p class="text-gray-500 text-center py-2" id="no-comment-hint">暂无评论，快来抢沙发吧！</p>'
-                            : mood.comments.map(c => `
-                                <div class="comment-box">
+                            : mood.comments.map(c => {
+                                const isMyComment = c.author === currentUser;
+                                return `<div class="comment-box" id="comment-${c.id}">
                                     <div class="flex justify-between items-center mb-1">
-                                        <span class="font-medium text-primary">${c.author}</span>
-                                        <span class="text-xs text-gray-500">${new Date(c.date).toLocaleString()}</span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-primary">${c.author}</span>
+                                            ${isMyComment ? '<span class="text-xs bg-primary text-white px-1.5 py-0.5 rounded">我</span>' : ''}
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-500">${new Date(c.date).toLocaleString()}</span>
+                                            ${isMyComment ? `<button onclick="deleteComment('${mood.id}', '${c.id}')" class="text-red-500 hover:text-red-700 text-xs"><i class="fa fa-trash mr-1"></i>删除</button>` : ''}
+                                        </div>
                                     </div>
                                     <p class="text-gray-700 text-sm">${c.text}</p>
-                                </div>`).join('')
+                                </div>`;
+                            }).join('')
                         }
                     </div>
                 </div>`;
@@ -496,12 +544,20 @@
             if (!list) return;
             const hint = document.getElementById('no-comment-hint');
             if (hint) hint.remove();
+            const isMyComment = comment.author === currentUser;
             const el = document.createElement('div');
             el.className = 'comment-box fade-in';
+            el.id = 'comment-' + comment.id;
             el.innerHTML = `
                 <div class="flex justify-between items-center mb-1">
-                    <span class="font-medium text-primary">${comment.author}</span>
-                    <span class="text-xs text-gray-500">${new Date(comment.date).toLocaleString()}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-medium text-primary">${comment.author}</span>
+                        ${isMyComment ? '<span class="text-xs bg-primary text-white px-1.5 py-0.5 rounded">我</span>' : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-500">${new Date(comment.date).toLocaleString()}</span>
+                        ${isMyComment ? `<button onclick="deleteComment('${mood.id}', '${comment.id}')" class="text-red-500 hover:text-red-700 text-xs"><i class="fa fa-trash mr-1"></i>删除</button>` : ''}
+                    </div>
                 </div>
                 <p class="text-gray-700 text-sm">${comment.text}</p>`;
             list.appendChild(el);
