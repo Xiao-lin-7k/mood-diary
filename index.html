@@ -200,11 +200,8 @@
         // =====================================================
 
         const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL';
-        let supabase = null;
 
-        if (isConfigured) {
-            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        } else {
+        if (!isConfigured) {
             document.getElementById('config-banner').classList.remove('hidden');
         }
 
@@ -229,7 +226,7 @@
             if (!isConfigured) { loadLocal(); return; }
             try {
                 // 加载心情记录
-                const { data: entries, error } = await supabase
+                const { data: entries, error } = await window.supabase
                     .from('mood_entries')
                     .select('*')
                     .order('created_at', { ascending: false })
@@ -237,7 +234,7 @@
                 if (error) throw error;
 
                 // 加载所有评论
-                const { data: allComments } = await supabase
+                const { data: allComments } = await window.supabase
                     .from('comments')
                     .select('*')
                     .order('created_at', { ascending: true });
@@ -273,7 +270,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner mr-2" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>发布中...';
             try {
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('mood_entries')
                     .insert({ mood: selectedMood, text, author: currentUser })
                     .select()
@@ -297,7 +294,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>';
             try {
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('comments')
                     .insert({ mood_id: moodId, text, author: currentUser })
                     .select()
