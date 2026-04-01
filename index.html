@@ -278,7 +278,9 @@
                             id: c.id,
                             text: c.text,
                             author: c.author,
-                            date: c.created_at
+                            date: c.created_at,
+                            reply_to_author: c.reply_to_author || null,
+                            reply_to_text: c.reply_to_text || null
                         }))
                 }));
                 setSyncStatus(true);
@@ -321,16 +323,30 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>';
             try {
+                const insertData = { mood_id: moodId, text, author: currentUser };
+                // 如果是回复评论，添加回复字段
+                if (replyTo.author) {
+                    insertData.reply_to_author = replyTo.author;
+                    insertData.reply_to_text = replyTo.text;
+                }
                 const { data, error } = await sb
                     .from('comments')
-                    .insert({ mood_id: moodId, text, author: currentUser })
+                    .insert(insertData)
                     .select()
                     .single();
                 if (error) throw error;
-                const newComment = { id: data.id, text: data.text, author: data.author, date: data.created_at };
+                const newComment = { 
+                    id: data.id, 
+                    text: data.text, 
+                    author: data.author, 
+                    date: data.created_at,
+                    reply_to_author: data.reply_to_author || null,
+                    reply_to_text: data.reply_to_text || null
+                };
                 const mood = moodData.find(m => m.id === moodId);
                 if (mood) { mood.comments.push(newComment); }
                 document.getElementById('comment-input').value = '';
+                cancelReply();
                 appendCommentToModal(newComment, mood);
                 renderMoodList();
             } catch (e) {
@@ -386,10 +402,18 @@
         function postCommentLocal(moodId, text) {
             const mood = moodData.find(m => m.id === moodId);
             if (!mood) return;
-            const c = { id: Date.now().toString(), text, author: currentUser, date: new Date().toISOString() };
+            const c = { 
+                id: Date.now().toString(), 
+                text, 
+                author: currentUser, 
+                date: new Date().toISOString(),
+                reply_to_author: replyTo.author || null,
+                reply_to_text: replyTo.text || null
+            };
             mood.comments.push(c);
             localStorage.setItem('moodData', JSON.stringify(moodData));
             document.getElementById('comment-input').value = '';
+            cancelReply();
             appendCommentToModal(c, mood);
             renderMoodList();
         }
@@ -526,9 +550,11 @@
                                         </div>
                                         <div class="flex items-center gap-2">
                                             <span class="text-xs text-gray-500">${new Date(c.date).toLocaleString()}</span>
+                                            <button onclick="replyToComment('${c.author}')" class="text-secondary hover:text-primary text-xs"><i class="fa fa-reply mr-1"></i>回复</button>
                                             ${isMyComment ? `<button onclick="deleteComment('${mood.id}', '${c.id}')" class="text-red-500 hover:text-red-700 text-xs"><i class="fa fa-trash mr-1"></i>删除</button>` : ''}
                                         </div>
                                     </div>
+                                    ${c.reply_to_author ? `<div class="text-xs text-gray-500 bg-gray-100 p-2 rounded mb-2"><i class="fa fa-share mr-1"></i>回复 <span class="text-secondary">@${c.reply_to_author}</span>：${c.reply_to_text || ''}</div>` : ''}
                                     <p class="text-gray-700 text-sm">${c.text}</p>
                                 </div>`;
                             }).join('')
@@ -556,9 +582,11 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-500">${new Date(comment.date).toLocaleString()}</span>
+                        <button onclick="replyToComment('${comment.author}')" class="text-secondary hover:text-primary text-xs"><i class="fa fa-reply mr-1"></i>回复</button>
                         ${isMyComment ? `<button onclick="deleteComment('${mood.id}', '${comment.id}')" class="text-red-500 hover:text-red-700 text-xs"><i class="fa fa-trash mr-1"></i>删除</button>` : ''}
                     </div>
                 </div>
+                ${comment.reply_to_author ? `<div class="text-xs text-gray-500 bg-gray-100 p-2 rounded mb-2"><i class="fa fa-share mr-1"></i>回复 <span class="text-secondary">@${comment.reply_to_author}</span>：${comment.reply_to_text || ''}</div>` : ''}
                 <p class="text-gray-700 text-sm">${comment.text}</p>`;
             list.appendChild(el);
             const label = document.getElementById('comment-count-label');
@@ -567,6 +595,45 @@
 
         function closeCommentModal() {
             document.getElementById('comment-modal').classList.add('hidden');
+            cancelReply();
+        }
+
+        // 回复功能
+        let replyTo = { author: null, text: null };
+
+        function replyToComment(author) {
+            // 找到被回复的评论，获取其文本
+            const moodId = document.getElementById('comment-form').dataset.moodId;
+            const mood = moodData.find(m => m.id === moodId);
+            const targetComment = mood?.comments.find(c => c.author === author);
+            
+            replyTo = { 
+                author: author, 
+                text: targetComment?.text || null 
+            };
+            const input = document.getElementById('comment-input');
+            input.placeholder = `回复 @${author}...`;
+            input.focus();
+            // 显示取消回复按钮
+            let cancelBtn = document.getElementById('cancel-reply-btn');
+            if (!cancelBtn) {
+                cancelBtn = document.createElement('button');
+                cancelBtn.id = 'cancel-reply-btn';
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'text-gray-500 hover:text-red-500 text-sm px-2';
+                cancelBtn.innerHTML = '<i class="fa fa-times mr-1"></i>取消';
+                cancelBtn.onclick = cancelReply;
+                input.parentElement.appendChild(cancelBtn);
+            }
+            cancelBtn.classList.remove('hidden');
+        }
+
+        function cancelReply() {
+            replyTo = { author: null, text: null };
+            const input = document.getElementById('comment-input');
+            input.placeholder = '写下你的评论...';
+            const cancelBtn = document.getElementById('cancel-reply-btn');
+            if (cancelBtn) cancelBtn.classList.add('hidden');
         }
 
         // =================== 事件绑定 ===================
