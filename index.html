@@ -215,6 +215,29 @@
         let moodData = [];
         let moodChart = null;
 
+        // localStorage 键名
+        const STORAGE_KEY_USER = 'moodDiary_user';
+
+        // 检查是否记住过用户名
+        function checkSavedUser() {
+            const savedUser = localStorage.getItem(STORAGE_KEY_USER);
+            if (savedUser) {
+                document.getElementById('username-input').value = savedUser;
+                // 自动登录
+                enterDiary(savedUser);
+                return true;
+            }
+            return false;
+        }
+
+        function saveUser(name) {
+            localStorage.setItem(STORAGE_KEY_USER, name);
+        }
+
+        function clearSavedUser() {
+            localStorage.removeItem(STORAGE_KEY_USER);
+        }
+
         const moodTypes = {
             happy:   { icon: 'fa-smile-o', color: 'green',  text: '开心', bg: 'bg-green-100',  textColor: 'text-green-800'  },
             sad:     { icon: 'fa-frown-o', color: 'blue',   text: '难过', bg: 'bg-blue-100',   textColor: 'text-blue-800'   },
@@ -492,7 +515,11 @@
 
         // =================== 事件绑定 ===================
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('enter-btn').addEventListener('click', enterDiary);
+            // 检查是否记住过用户名
+            if (!checkSavedUser()) {
+                // 没有保存的用户名，显示登录界面
+            }
+            document.getElementById('enter-btn').addEventListener('click', () => enterDiary());
             document.getElementById('username-input').addEventListener('keypress', e => { if (e.key === 'Enter') enterDiary(); });
             document.querySelectorAll('.mood-option').forEach(opt => {
                 opt.addEventListener('click', function() {
@@ -515,10 +542,12 @@
             });
         });
 
-        function enterDiary() {
-            const name = document.getElementById('username-input').value.trim();
+        function enterDiary(nameFromSaved) {
+            // 支持自动登录（nameFromSaved）或个人输入登录
+            const name = nameFromSaved || document.getElementById('username-input').value.trim();
             if (!name) { alert('请输入您的名字'); return; }
             currentUser = name;
+            saveUser(name); // 保存到 localStorage
             document.getElementById('user-section').classList.add('hidden');
             document.getElementById('main-content').classList.remove('hidden');
             initChart();
