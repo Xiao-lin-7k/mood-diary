@@ -206,10 +206,8 @@
         }
 
         // 初始化 Supabase 客户端
-        let supabase = null;
-        if (typeof supabase !== 'undefined' && supabase.createClient) {
-            supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        }
+        // supabase 是 CDN 脚本定义的全局变量，这里我们获取它的 createClient 方法来创建客户端
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // 全局
         let currentUser = '';
@@ -229,10 +227,10 @@
 
         // =================== 数据层 ===================
         async function loadData() {
-            if (!isConfigured || !supabase) { loadLocal(); return; }
+            if (!isConfigured) { loadLocal(); return; }
             try {
                 // 加载心情记录
-                const { data: entries, error } = await supabase
+                const { data: entries, error } = await sb
                     .from('mood_entries')
                     .select('*')
                     .order('created_at', { ascending: false })
@@ -240,7 +238,7 @@
                 if (error) throw error;
 
                 // 加载所有评论
-                const { data: allComments } = await supabase
+                const { data: allComments } = await sb
                     .from('comments')
                     .select('*')
                     .order('created_at', { ascending: true });
@@ -271,12 +269,12 @@
         }
 
         async function postMood(text) {
-            if (!isConfigured || !supabase) { postMoodLocal(text); return; }
+            if (!isConfigured) { postMoodLocal(text); return; }
             const btn = document.getElementById('submit-btn');
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner mr-2" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>发布中...';
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sb
                     .from('mood_entries')
                     .insert({ mood: selectedMood, text, author: currentUser })
                     .select()
@@ -295,12 +293,12 @@
         }
 
         async function postComment(moodId, text) {
-            if (!isConfigured || !supabase) { postCommentLocal(moodId, text); return; }
+            if (!isConfigured) { postCommentLocal(moodId, text); return; }
             const btn = document.getElementById('comment-submit-btn');
             btn.disabled = true;
             btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>';
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sb
                     .from('comments')
                     .insert({ mood_id: moodId, text, author: currentUser })
                     .select()
