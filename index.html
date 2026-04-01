@@ -1,0 +1,527 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心情日记 | Mood Diary</title>
+    <link rel="stylesheet" href="https://latex.vercel.app/style.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1a5276',
+                        secondary: '#3498db',
+                        accent: '#f4d03f',
+                        neutral: '#f8f9fa',
+                        dark: '#2c3e50'
+                    },
+                    fontFamily: { sans: ['Latin Modern', 'Arial', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .mood-entry { @apply border border-primary rounded-lg p-4 mb-6 bg-white shadow-sm; }
+            .mood-header { @apply flex justify-between items-center mb-2; }
+            .mood-content { @apply text-gray-700 leading-relaxed; }
+            .comment-box { @apply border border-gray-300 rounded-lg p-3 mb-3 bg-gray-50; }
+            .btn-primary { @apply bg-primary text-white px-4 py-2 rounded hover:bg-opacity-90 transition-all; }
+            .btn-secondary { @apply bg-secondary text-white px-4 py-2 rounded hover:bg-opacity-90 transition-all; }
+            .btn-accent { @apply bg-accent text-dark px-4 py-2 rounded hover:bg-opacity-90 transition-all; }
+            .input-field { @apply border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent; }
+            .mood-selector { @apply flex gap-2 mb-4 flex-wrap; }
+            .mood-option { @apply px-3 py-1 rounded-full text-sm cursor-pointer transition-all; }
+            .mood-option.selected { @apply ring-2 ring-primary; }
+            .math-decoration { @apply text-3xl text-primary opacity-30 select-none; }
+            .mood-happy { @apply bg-green-100 text-green-800; }
+            .mood-sad { @apply bg-blue-100 text-blue-800; }
+            .mood-angry { @apply bg-red-100 text-red-800; }
+            .mood-anxious { @apply bg-yellow-100 text-yellow-800; }
+            .mood-calm { @apply bg-purple-100 text-purple-800; }
+            .mood-excited { @apply bg-orange-100 text-orange-800; }
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #3498db; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #1a5276; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1a5276;
+            border-radius: 50%;
+            width: 24px; height: 24px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-neutral min-h-screen">
+
+    <!-- 配置提示横幅 -->
+    <div id="config-banner" class="hidden mx-auto max-w-4xl mt-4 px-4">
+        <div class="bg-amber-50 border border-amber-300 rounded-lg p-4 flex gap-3">
+            <i class="fa fa-exclamation-triangle text-amber-500 mt-1 flex-shrink-0"></i>
+            <div>
+                <p class="font-bold text-amber-800">⚙️ 需要配置 Supabase</p>
+                <p class="text-amber-700 text-sm mt-1">
+                    请将页面 &lt;script&gt; 中的 <code class="bg-amber-100 px-1 rounded">YOUR_SUPABASE_URL</code> 和
+                    <code class="bg-amber-100 px-1 rounded">YOUR_SUPABASE_ANON_KEY</code> 替换为你的真实值。
+                </p>
+                <p class="text-amber-700 text-sm mt-1">
+                    获取方式：<a href="https://supabase.com" target="_blank" class="underline font-medium">supabase.com</a>
+                    → 用 GitHub 登录 → New Project → Settings → API
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 max-w-4xl fade-in">
+        <!-- 标题 -->
+        <header class="text-center mb-8">
+            <div class="relative inline-block">
+                <h1 class="text-4xl font-bold text-primary mb-2">小林的心情日记</h1>
+                <div class="absolute -left-8 top-0 math-decoration">∑</div>
+                <div class="absolute -right-8 top-0 math-decoration">∫</div>
+            </div>
+            <p class="text-gray-600 italic">记录每一天的心情变化</p>
+        </header>
+
+        <!-- 登录区域 -->
+        <div id="user-section" class="mb-8 text-center">
+            <div class="inline-block bg-white p-6 rounded-lg shadow-md border border-primary">
+                <h2 class="text-xl text-primary mb-4">欢迎访问我的心情日记</h2>
+                <p class="mb-4">请输入您的名字以开始互动</p>
+                <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <input type="text" id="username-input" placeholder="您的名字" class="input-field max-w-xs" maxlength="20">
+                    <button id="enter-btn" class="btn-primary">
+                        <i class="fa fa-sign-in mr-2"></i>进入日记
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容 -->
+        <main id="main-content" class="hidden">
+            <div id="sync-status" class="text-right text-sm text-gray-400 mb-2">
+                <i class="fa fa-circle text-green-400 mr-1"></i>已连接云端，数据实时同步
+            </div>
+
+            <!-- 统计图表 -->
+            <section class="mb-8 bg-white p-6 rounded-lg shadow-md border border-primary">
+                <h2 class="text-2xl text-primary mb-4 flex items-center">
+                    <span class="mr-2">心情统计</span>
+                    <span class="text-sm bg-secondary text-white px-2 py-1 rounded">可视化</span>
+                </h2>
+                <div class="h-64">
+                    <canvas id="mood-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- 发布新心情 -->
+            <section class="mb-8 bg-white p-6 rounded-lg shadow-md border border-primary">
+                <h2 class="text-2xl text-primary mb-4">记录新心情</h2>
+                <form id="mood-form" class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 mb-2">选择心情类型</label>
+                        <div class="mood-selector">
+                            <div class="mood-option mood-happy selected" data-mood="happy"><i class="fa fa-smile-o mr-1"></i>开心</div>
+                            <div class="mood-option mood-sad" data-mood="sad"><i class="fa fa-frown-o mr-1"></i>难过</div>
+                            <div class="mood-option mood-angry" data-mood="angry"><i class="fa fa-fire mr-1"></i>生气</div>
+                            <div class="mood-option mood-anxious" data-mood="anxious"><i class="fa fa-cloud mr-1"></i>焦虑</div>
+                            <div class="mood-option mood-calm" data-mood="calm"><i class="fa fa-leaf mr-1"></i>平静</div>
+                            <div class="mood-option mood-excited" data-mood="excited"><i class="fa fa-bolt mr-1"></i>兴奋</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="mood-text" class="block text-gray-700 mb-2">今天的心情</label>
+                        <textarea id="mood-text" rows="4" class="input-field" placeholder="分享一下今天的心情吧..."></textarea>
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" id="submit-btn" class="btn-accent">
+                            <i class="fa fa-paper-plane mr-2"></i>发布心情
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 心情列表 -->
+            <section>
+                <h2 class="text-2xl text-primary mb-4">心情记录</h2>
+                <div id="mood-list">
+                    <div class="text-center py-8 text-gray-500">
+                        <div class="loading-spinner mx-auto mb-2"></div>
+                        <p>正在加载云端数据...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 评论模态框 -->
+    <div id="comment-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl text-primary">评论区</h3>
+                <button id="close-modal" class="text-gray-500 hover:text-gray-700"><i class="fa fa-times text-xl"></i></button>
+            </div>
+            <div id="modal-content"></div>
+            <div class="mt-4 pt-4 border-t">
+                <form id="comment-form" class="flex gap-2">
+                    <input type="text" id="comment-input" placeholder="写下你的评论..." class="input-field flex-grow">
+                    <button type="submit" id="comment-submit-btn" class="btn-secondary whitespace-nowrap">
+                        <i class="fa fa-comment mr-1"></i>评论
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================
+        //  ⚙️  Supabase 配置 —— 替换下面两个值
+        //
+        //  获取步骤：
+        //  1. 打开 https://supabase.com，用 GitHub 账号登录
+        //  2. 点 "New project"，随便起个名字，等待创建
+        //  3. 进入项目 → 左侧 "Settings" → "API"
+        //  4. 复制 "Project URL" 和 "anon public" key
+        // =====================================================
+        const SUPABASE_URL      = 'https://bprogicwhlpthjhxuvtq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwcm9naWN3aGxwdGhsanhidXZ0cSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzQxMzI1MTQ3LCJleHAiOjE5OTY5MDExNDd9.sb_publishable_YFgFwC1qkisfMO4Zd5BGhA_p8FzZUdD';
+        // =====================================================
+
+        const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL';
+        let supabase = null;
+
+        if (isConfigured) {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } else {
+            document.getElementById('config-banner').classList.remove('hidden');
+        }
+
+        // 全局
+        let currentUser = '';
+        let selectedMood = 'happy';
+        let moodData = [];
+        let moodChart = null;
+
+        const moodTypes = {
+            happy:   { icon: 'fa-smile-o', color: 'green',  text: '开心', bg: 'bg-green-100',  textColor: 'text-green-800'  },
+            sad:     { icon: 'fa-frown-o', color: 'blue',   text: '难过', bg: 'bg-blue-100',   textColor: 'text-blue-800'   },
+            angry:   { icon: 'fa-fire',    color: 'red',    text: '生气', bg: 'bg-red-100',    textColor: 'text-red-800'    },
+            anxious: { icon: 'fa-cloud',   color: 'yellow', text: '焦虑', bg: 'bg-yellow-100', textColor: 'text-yellow-800' },
+            calm:    { icon: 'fa-leaf',    color: 'purple', text: '平静', bg: 'bg-purple-100', textColor: 'text-purple-800' },
+            excited: { icon: 'fa-bolt',    color: 'orange', text: '兴奋', bg: 'bg-orange-100', textColor: 'text-orange-800' }
+        };
+        const mathDecorations = ['∑', '∫', '√', '∞', '∆', '∇', '∂', '∃', '∀', '∈'];
+
+        // =================== 数据层 ===================
+        async function loadData() {
+            if (!isConfigured) { loadLocal(); return; }
+            try {
+                // 加载心情记录
+                const { data: entries, error } = await supabase
+                    .from('mood_entries')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+                if (error) throw error;
+
+                // 加载所有评论
+                const { data: allComments } = await supabase
+                    .from('comments')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+
+                moodData = entries.map(e => ({
+                    id: e.id,
+                    mood: e.mood,
+                    text: e.text,
+                    date: e.created_at,
+                    author: e.author,
+                    comments: (allComments || [])
+                        .filter(c => c.mood_id === e.id)
+                        .map(c => ({
+                            id: c.id,
+                            text: c.text,
+                            author: c.author,
+                            date: c.created_at
+                        }))
+                }));
+                setSyncStatus(true);
+                renderMoodList();
+                updateChart();
+            } catch (e) {
+                console.error('云端加载失败:', e);
+                setSyncStatus(false);
+                loadLocal();
+            }
+        }
+
+        async function postMood(text) {
+            if (!isConfigured) { postMoodLocal(text); return; }
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner mr-2" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>发布中...';
+            try {
+                const { data, error } = await supabase
+                    .from('mood_entries')
+                    .insert({ mood: selectedMood, text, author: currentUser })
+                    .select()
+                    .single();
+                if (error) throw error;
+                moodData.unshift({ id: data.id, mood: data.mood, text: data.text, date: data.created_at, author: data.author, comments: [] });
+                document.getElementById('mood-text').value = '';
+                renderMoodList();
+                updateChart();
+            } catch (e) {
+                alert('发布失败，请检查网络连接或稍后重试。\n\n错误：' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-paper-plane mr-2"></i>发布心情';
+            }
+        }
+
+        async function postComment(moodId, text) {
+            if (!isConfigured) { postCommentLocal(moodId, text); return; }
+            const btn = document.getElementById('comment-submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;vertical-align:middle"></span>';
+            try {
+                const { data, error } = await supabase
+                    .from('comments')
+                    .insert({ mood_id: moodId, text, author: currentUser })
+                    .select()
+                    .single();
+                if (error) throw error;
+                const newComment = { id: data.id, text: data.text, author: data.author, date: data.created_at };
+                const mood = moodData.find(m => m.id === moodId);
+                if (mood) { mood.comments.push(newComment); }
+                document.getElementById('comment-input').value = '';
+                appendCommentToModal(newComment, mood);
+                renderMoodList();
+            } catch (e) {
+                alert('评论失败：' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa fa-comment mr-1"></i>评论';
+            }
+        }
+
+        // =================== 本地降级 ===================
+        function loadLocal() {
+            const saved = localStorage.getItem('moodData');
+            moodData = saved ? JSON.parse(saved) : [
+                { id: '1', mood: 'happy', text: '今天天气真好！数学考试得了满分 ∑(°△°|||)', date: new Date(Date.now()-86400000).toISOString(), author: '小明', comments: [{ id: '101', text: '恭喜！', author: '小红', date: new Date(Date.now()-43200000).toISOString() }] },
+                { id: '2', mood: 'sad',   text: '好朋友要转学了…∫(x)dx', date: new Date(Date.now()-172800000).toISOString(), author: '小明', comments: [] }
+            ];
+            if (!saved) localStorage.setItem('moodData', JSON.stringify(moodData));
+            renderMoodList();
+            updateChart();
+        }
+        function postMoodLocal(text) {
+            const entry = { id: Date.now().toString(), mood: selectedMood, text, date: new Date().toISOString(), author: currentUser, comments: [] };
+            moodData.unshift(entry);
+            localStorage.setItem('moodData', JSON.stringify(moodData));
+            document.getElementById('mood-text').value = '';
+            renderMoodList(); updateChart();
+        }
+        function postCommentLocal(moodId, text) {
+            const mood = moodData.find(m => m.id === moodId);
+            if (!mood) return;
+            const c = { id: Date.now().toString(), text, author: currentUser, date: new Date().toISOString() };
+            mood.comments.push(c);
+            localStorage.setItem('moodData', JSON.stringify(moodData));
+            document.getElementById('comment-input').value = '';
+            appendCommentToModal(c, mood);
+            renderMoodList();
+        }
+
+        // =================== UI 工具 ===================
+        function setSyncStatus(ok) {
+            document.getElementById('sync-status').innerHTML = ok
+                ? '<i class="fa fa-circle text-green-400 mr-1"></i>已连接云端，数据实时同步'
+                : '<i class="fa fa-circle text-yellow-400 mr-1"></i>云端不可用，当前使用本地存储';
+        }
+
+        function getColorByName(name, a=1) {
+            return ({ green:`rgba(72,187,120,${a})`, blue:`rgba(59,130,246,${a})`, red:`rgba(239,68,68,${a})`, yellow:`rgba(234,179,8,${a})`, purple:`rgba(168,85,247,${a})`, orange:`rgba(249,115,22,${a})` })[name] || `rgba(107,114,128,${a})`;
+        }
+
+        function getTimeAgo(d) {
+            const diff = Date.now() - new Date(d);
+            const m = Math.floor(diff/60000), h = Math.floor(diff/3600000), day = Math.floor(diff/86400000);
+            if (m < 1) return '刚刚'; if (m < 60) return `${m} 分钟前`;
+            if (h < 24) return `${h} 小时前`; if (day < 30) return `${day} 天前`;
+            return new Date(d).toLocaleDateString();
+        }
+
+        // =================== 图表 ===================
+        function initChart() {
+            const ctx = document.getElementById('mood-chart').getContext('2d');
+            moodChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.values(moodTypes).map(m => m.text),
+                    datasets: [{ label: '心情记录次数', data: new Array(6).fill(0),
+                        backgroundColor: Object.values(moodTypes).map(m => getColorByName(m.color, 0.7)),
+                        borderColor: Object.values(moodTypes).map(m => getColorByName(m.color, 1)),
+                        borderWidth: 1 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `记录次数: ${c.parsed.y}` } } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+        }
+
+        function updateChart() {
+            if (!moodChart) return;
+            moodChart.data.datasets[0].data = Object.keys(moodTypes).map(k => moodData.filter(m => m.mood === k).length);
+            moodChart.update();
+        }
+
+        // =================== 渲染列表 ===================
+        function renderMoodList() {
+            const list = document.getElementById('mood-list');
+            if (!moodData.length) {
+                list.innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fa fa-book text-4xl mb-2 block"></i><p>还没有心情记录，快来发布第一条吧！</p></div>';
+                return;
+            }
+            list.innerHTML = '';
+            moodData.forEach(mood => {
+                const mt = moodTypes[mood.mood];
+                const d = new Date(mood.date);
+                const fd = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                const r1 = mathDecorations[Math.floor(Math.random()*mathDecorations.length)];
+                const r2 = mathDecorations[Math.floor(Math.random()*mathDecorations.length)];
+                const el = document.createElement('div');
+                el.className = 'mood-entry fade-in';
+                el.innerHTML = `
+                    <div class="relative">
+                        <div class="absolute -left-4 top-0 math-decoration">${r1}</div>
+                        <div class="absolute -right-4 top-0 math-decoration">${r2}</div>
+                        <div class="mood-header">
+                            <div class="flex items-center gap-2">
+                                <span class="${mt.bg} ${mt.textColor} px-2 py-1 rounded-full text-sm">
+                                    <i class="fa ${mt.icon} mr-1"></i>${mt.text}
+                                </span>
+                                <span class="text-gray-500 text-sm">${fd}</span>
+                            </div>
+                            <div class="text-sm text-gray-500"><i class="fa fa-user mr-1"></i>${mood.author}</div>
+                        </div>
+                        <div class="mood-content pl-2 border-l-4 border-primary">
+                            <p>${mood.text.replace(/\n/g,'<br>')}</p>
+                        </div>
+                        <div class="mt-3 flex justify-between items-center">
+                            <button class="text-secondary hover:text-primary transition-colors flex items-center gap-1" onclick="openCommentModal('${mood.id}')">
+                                <i class="fa fa-comments"></i><span>${mood.comments.length} 条评论</span>
+                            </button>
+                            <div class="text-xs text-gray-400"><i class="fa fa-clock-o mr-1"></i>${getTimeAgo(mood.date)}</div>
+                        </div>
+                    </div>`;
+                list.appendChild(el);
+            });
+        }
+
+        // =================== 评论模态框 ===================
+        function openCommentModal(moodId) {
+            const mood = moodData.find(m => m.id === moodId);
+            if (!mood) return;
+            const mt = moodTypes[mood.mood];
+            document.getElementById('modal-content').innerHTML = `
+                <div class="mb-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="${mt.bg} ${mt.textColor} px-2 py-1 rounded-full text-sm"><i class="fa ${mt.icon} mr-1"></i>${mt.text}</span>
+                        <span class="text-gray-500 text-sm">${new Date(mood.date).toLocaleString()}</span>
+                    </div>
+                    <p class="text-gray-700">${mood.text.replace(/\n/g,'<br>')}</p>
+                    <div class="text-right text-sm text-gray-500 mt-1"><i class="fa fa-user mr-1"></i>${mood.author}</div>
+                </div>
+                <div>
+                    <h4 class="text-lg text-primary mb-2" id="comment-count-label">评论 (${mood.comments.length})</h4>
+                    <div id="comments-list" class="space-y-2">
+                        ${mood.comments.length === 0
+                            ? '<p class="text-gray-500 text-center py-2" id="no-comment-hint">暂无评论，快来抢沙发吧！</p>'
+                            : mood.comments.map(c => `
+                                <div class="comment-box">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="font-medium text-primary">${c.author}</span>
+                                        <span class="text-xs text-gray-500">${new Date(c.date).toLocaleString()}</span>
+                                    </div>
+                                    <p class="text-gray-700 text-sm">${c.text}</p>
+                                </div>`).join('')
+                        }
+                    </div>
+                </div>`;
+            document.getElementById('comment-form').dataset.moodId = moodId;
+            document.getElementById('comment-modal').classList.remove('hidden');
+        }
+
+        function appendCommentToModal(comment, mood) {
+            const list = document.getElementById('comments-list');
+            if (!list) return;
+            const hint = document.getElementById('no-comment-hint');
+            if (hint) hint.remove();
+            const el = document.createElement('div');
+            el.className = 'comment-box fade-in';
+            el.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-medium text-primary">${comment.author}</span>
+                    <span class="text-xs text-gray-500">${new Date(comment.date).toLocaleString()}</span>
+                </div>
+                <p class="text-gray-700 text-sm">${comment.text}</p>`;
+            list.appendChild(el);
+            const label = document.getElementById('comment-count-label');
+            if (label && mood) label.textContent = `评论 (${mood.comments.length})`;
+        }
+
+        function closeCommentModal() {
+            document.getElementById('comment-modal').classList.add('hidden');
+        }
+
+        // =================== 事件绑定 ===================
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('enter-btn').addEventListener('click', enterDiary);
+            document.getElementById('username-input').addEventListener('keypress', e => { if (e.key === 'Enter') enterDiary(); });
+            document.querySelectorAll('.mood-option').forEach(opt => {
+                opt.addEventListener('click', function() {
+                    document.querySelectorAll('.mood-option').forEach(o => o.classList.remove('selected'));
+                    this.classList.add('selected');
+                    selectedMood = this.dataset.mood;
+                });
+            });
+            document.getElementById('mood-form').addEventListener('submit', e => {
+                e.preventDefault();
+                const text = document.getElementById('mood-text').value.trim();
+                text ? postMood(text) : alert('请输入心情内容');
+            });
+            document.getElementById('close-modal').addEventListener('click', closeCommentModal);
+            document.getElementById('comment-form').addEventListener('submit', e => {
+                e.preventDefault();
+                const text = document.getElementById('comment-input').value.trim();
+                const id = document.getElementById('comment-form').dataset.moodId;
+                if (text && id) postComment(id, text);
+            });
+        });
+
+        function enterDiary() {
+            const name = document.getElementById('username-input').value.trim();
+            if (!name) { alert('请输入您的名字'); return; }
+            currentUser = name;
+            document.getElementById('user-section').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            initChart();
+            loadData();
+        }
+    </script>
+</body></html>
